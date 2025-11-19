@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import csv
 import matplotlib.pyplot as plt
 from io import StringIO
 from scipy.interpolate import Rbf
@@ -24,24 +25,24 @@ st.markdown("---")
 with st.sidebar:
     st.header("使用说明")
     st.markdown("""
-    1. **上传数据文件**：选择包含位移和力数据的.txt文件
+    1. **上传数据文件**：选择包含位移和力数据的.txt或.csv文件
     2. **调整参数**（可选）：根据需要调整处理参数
     3. **提取骨架曲线**：点击按钮开始处理
     4. **查看结果**：分析生成的图表和下载处理结果
 
     **数据格式要求：**
-    - 文本文件(.txt格式)
+    - 文本文件(.txt格式)或CSV文件(.csv格式)
     - 包含两列数据：位移和力
-    - 列之间用空格或制表符分隔
-    - 不需要表头
+    - TXT文件：列之间用空格或制表符分隔
+    - CSV文件：包含表头行，从第二行开始为数据
     """)
 
 # 文件上传区域
 st.header("📁 文件上传")
 uploaded_file = st.file_uploader(
     "选择滞回曲线数据文件",
-    type=['txt'],
-    help="请上传包含位移和力两列数据的文本文件"
+    type=['txt','csv'],
+    help="请上传包含位移和力两列数据的文本文件或CSV文件"
 )
 
 # 处理参数设置
@@ -70,8 +71,11 @@ with col2:
 
 
 def read_txt_data(file_content):
-    """读取txt文件中的数据"""
+    """读取txt文件或csv文件中的数据"""
     try:
+        # 根据文件名确定文件类型
+        filename = getattr(file_content, 'name', '')
+        is_csv = filename.lower().endswith('.csv')
         # 如果是上传的文件对象
         if hasattr(file_content, 'read'):
             content = file_content.read().decode('utf-8')
@@ -81,21 +85,43 @@ def read_txt_data(file_content):
         # 解析数据
         displacements = []
         forces = []
-        lines = content.split('\n')
+        if is_csv:
+            # 处理CSV文件（跳过标题行）
+            lines = content.split('\n')
+            # 跳过第一行
+            data_lines = lines[1:] if len(lines) > 1 else []
 
-        for line in lines:
-            line = line.strip()
-            if line and not line.startswith('"'):  # 跳过空行和标题行
-                try:
-                    values = line.split()
-                    if len(values) >= 2:
-                        displacement = float(values[0])
-                        force = float(values[1])
+
+            reader = csv.reader(StringIO(content))
+            # Skip header row
+            next(reader, None)
+
+            for row in reader:
+                if len(row) >= 2:
+                    try:
+                        displacement = float(row[0])
+                        force = float(row[1])
                         displacements.append(displacement)
                         forces.append(force)
-                except ValueError:
-                    # 跳过无法解析的行
-                    continue
+                    except ValueError:
+                        # Skip rows that can't be parsed
+                        continue
+        else:
+            lines = content.split('\n')
+
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('"'):  # 跳过空行和标题行
+                    try:
+                        values = line.split()
+                        if len(values) >= 2:
+                            displacement = float(values[0])
+                            force = float(values[1])
+                            displacements.append(displacement)
+                            forces.append(force)
+                    except ValueError:
+                        # 跳过无法解析的行
+                        continue
 
         return np.array(displacements), np.array(forces)
     except Exception as e:
@@ -393,6 +419,11 @@ def rbf_smooth(x, y, function='multiquadric', smooth_factor=0.1, num_points=300)
 # 处理按钮
 if st.button("🚀 提取骨架曲线", type="primary", use_container_width=True):
     if uploaded_file is not None:
+        # 检查文件格式
+        filename = uploaded_file.name
+        if not (filename.endswith('.txt') or filename.endswith('.csv')):
+            st.error("❌ 不支持的文件格式，请上传 .txt 或 .csv 文件")
+            st.stop()
         try:
             with st.spinner("正在处理数据，请稍候..."):
 
