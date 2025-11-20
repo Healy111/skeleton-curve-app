@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.font_manager as fm
 import csv
 import matplotlib.pyplot as plt
 from io import StringIO, BytesIO
@@ -13,13 +14,27 @@ from skeleton_extractor import (
     rbf_smooth
 )
 
-try:
-    plt.rcParams['font.sans-serif'] = ['SimHei', 'FangSong', 'KaiTi']
+def setup_chinese_font():
+    """设置中文字体支持"""
+    # 常见中文字体列表
+    chinese_fonts = ['SimHei', 'FangSong', 'KaiTi', 'Microsoft YaHei', 'STHeiti', 'PingFang SC', 'Noto Sans CJK']
+    
+    # 获取系统可用字体
+    available_fonts = [f.name for f in fm.fontManager.ttflist]
+    
+    # 查找可用的中文字体
+    for font in chinese_fonts:
+        if font in available_fonts:
+            plt.rcParams['font.sans-serif'] = [font]
+            plt.rcParams['axes.unicode_minus'] = False
+            return True
+    
+    # 如果找不到中文字体，至少确保负号能正常显示
     plt.rcParams['axes.unicode_minus'] = False
-except:
-    # 如果找不到中文字体，使用默认设置
-    plt.rcParams['axes.unicode_minus'] = False
-    pass
+    return False
+
+# 应用字体设置
+setup_chinese_font()
 # 设置页面配置
 st.set_page_config(
     page_title="骨架曲线提取器",
