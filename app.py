@@ -2,7 +2,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import platform
+import tempfile
+import requests
+import os
 import matplotlib.font_manager as fm
 import csv
 import matplotlib.pyplot as plt
@@ -15,30 +17,38 @@ from skeleton_extractor import (
     rbf_smooth
 )
 
-def check_available_fonts():
-    """检查当前可用的中文字体"""
-    import matplotlib.font_manager as fm
-    
-    # 获取所有字体
-    fonts = [f.name for f in fm.fontManager.ttflist]
-    
-    # 中文字体关键词
-    chinese_keywords = ['Hei', 'YaHei', 'Yuan', 'Kai', 'Song', 'Fang', 'Black', 'Medium', 'Light', 'CJK', 'SC']
-    
-    chinese_fonts = []
-    for font in fonts:
-        if any(keyword in font for keyword in chinese_keywords):
-            chinese_fonts.append(font)
-    
-    print("可用的中文字体:", sorted(set(chinese_fonts)))
-    return chinese_fonts
+def setup_chinese_font_for_matplotlib():
+    """专门为matplotlib设置中文字体"""
+    try:
+        # 方案1：下载思源黑体
+        font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
+        font_path = os.path.join(tempfile.gettempdir(), "NotoSansCJKsc.otf")
+        
+        if not os.path.exists(font_path):
+            response = requests.get(font_url)
+            with open(font_path, 'wb') as f:
+                f.write(response.content)
+        
+        # 注册字体
+        fm.fontManager.addfont(font_path)
+        font_prop = fm.FontProperties(fname=font_path)
+        font_name = font_prop.get_name()
+        
+        plt.rcParams['font.family'] = font_name
+        plt.rcParams['axes.unicode_minus'] = False
+        return True
+    except Exception as e:
+        # 方案2：使用系统字体
+        try:
+            system_fonts = ['DejaVu Sans', 'Arial']
+            plt.rcParams['font.family'] = system_fonts
+            plt.rcParams['axes.unicode_minus'] = False
+            return False
+        except:
+            return False
 
-# 在应用开头调用
-available_chinese_fonts = check_available_fonts()
-if available_chinese_fonts:
-    # 使用第一个可用的中文字体
-    plt.rcParams['font.family'] = available_chinese_fonts[0]
-
+# 在应用开头调用字体设置
+setup_chinese_font_for_matplotlib()
 # 设置页面配置
 st.set_page_config(
     page_title="骨架曲线提取器",
