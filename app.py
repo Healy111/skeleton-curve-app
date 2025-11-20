@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import platform
 import matplotlib.font_manager as fm
 import csv
 import matplotlib.pyplot as plt
@@ -14,27 +15,47 @@ from skeleton_extractor import (
     rbf_smooth
 )
 
-def setup_chinese_font():
-    """设置中文字体支持"""
-    # 常见中文字体列表
-    chinese_fonts = ['SimHei', 'FangSong', 'KaiTi', 'Microsoft YaHei', 'STHeiti', 'PingFang SC', 'Noto Sans CJK']
+def setup_matplotlib_font():
+    """专门为matplotlib设置中文字体"""
+    system = platform.system()
     
-    # 获取系统可用字体
-    available_fonts = [f.name for f in fm.fontManager.ttflist]
+    # 不同系统的中文字体映射
+    font_mapping = {
+        'Windows': ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi'],
+        'Darwin': ['Heiti SC', 'STHeiti', 'AppleGothic'],  # macOS
+        'Linux': ['WenQuanYi Micro Hei', 'Noto Sans CJK SC', 'DejaVu Sans']
+    }
     
-    # 查找可用的中文字体
-    for font in chinese_fonts:
-        if font in available_fonts:
-            plt.rcParams['font.sans-serif'] = [font]
-            plt.rcParams['axes.unicode_minus'] = False
-            return True
+    # 获取当前系统的候选字体
+    candidates = font_mapping.get(system, ['DejaVu Sans'])
     
-    # 如果找不到中文字体，至少确保负号能正常显示
+    # 查找可用的字体
+    available_fonts = []
+    for font_name in candidates:
+        try:
+            # 直接查找字体文件路径
+            font_path = fm.findfont(fm.FontProperties(family=font_name))
+            if font_path and not font_path.lower().endswith('.ttc'):  # 避免TTF集合文件
+                available_fonts.append(font_name)
+                print(f"找到字体: {font_name} -> {font_path}")
+        except:
+            continue
+    
+    if available_fonts:
+        # 设置字体
+        plt.rcParams['font.family'] = available_fonts[0]
+        plt.rcParams['font.sans-serif'] = available_fonts + ['DejaVu Sans']
+        print(f"Matplotlib 使用字体: {available_fonts[0]}")
+    else:
+        # 回退方案
+        plt.rcParams['font.family'] = 'DejaVu Sans'
+        print("使用默认字体 DejaVu Sans")
+    
     plt.rcParams['axes.unicode_minus'] = False
-    return False
 
-# 应用字体设置
-setup_chinese_font()
+# 在生成图表之前调用
+setup_matplotlib_font()
+
 # 设置页面配置
 st.set_page_config(
     page_title="骨架曲线提取器",
