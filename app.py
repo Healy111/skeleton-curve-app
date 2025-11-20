@@ -13,9 +13,13 @@ from skeleton_extractor import (
     rbf_smooth
 )
 
-plt.rcParams['font.sans-serif'] = ['SimHei', 'FangSong', 'KaiTi']
-plt.rcParams['axes.unicode_minus'] = False
-
+try:
+    plt.rcParams['font.sans-serif'] = ['SimHei', 'FangSong', 'KaiTi']
+    plt.rcParams['axes.unicode_minus'] = False
+except:
+    # 如果找不到中文字体，使用默认设置
+    plt.rcParams['axes.unicode_minus'] = False
+    pass
 # 设置页面配置
 st.set_page_config(
     page_title="骨架曲线提取器",
