@@ -15,46 +15,29 @@ from skeleton_extractor import (
     rbf_smooth
 )
 
-def setup_matplotlib_font():
-    """专门为matplotlib设置中文字体"""
-    system = platform.system()
+def check_available_fonts():
+    """检查当前可用的中文字体"""
+    import matplotlib.font_manager as fm
     
-    # 不同系统的中文字体映射
-    font_mapping = {
-        'Windows': ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi'],
-        'Darwin': ['Heiti SC', 'STHeiti', 'AppleGothic'],  # macOS
-        'Linux': ['WenQuanYi Micro Hei', 'Noto Sans CJK SC', 'DejaVu Sans']
-    }
+    # 获取所有字体
+    fonts = [f.name for f in fm.fontManager.ttflist]
     
-    # 获取当前系统的候选字体
-    candidates = font_mapping.get(system, ['DejaVu Sans'])
+    # 中文字体关键词
+    chinese_keywords = ['Hei', 'YaHei', 'Yuan', 'Kai', 'Song', 'Fang', 'Black', 'Medium', 'Light', 'CJK', 'SC']
     
-    # 查找可用的字体
-    available_fonts = []
-    for font_name in candidates:
-        try:
-            # 直接查找字体文件路径
-            font_path = fm.findfont(fm.FontProperties(family=font_name))
-            if font_path and not font_path.lower().endswith('.ttc'):  # 避免TTF集合文件
-                available_fonts.append(font_name)
-                print(f"找到字体: {font_name} -> {font_path}")
-        except:
-            continue
+    chinese_fonts = []
+    for font in fonts:
+        if any(keyword in font for keyword in chinese_keywords):
+            chinese_fonts.append(font)
     
-    if available_fonts:
-        # 设置字体
-        plt.rcParams['font.family'] = available_fonts[0]
-        plt.rcParams['font.sans-serif'] = available_fonts + ['DejaVu Sans']
-        print(f"Matplotlib 使用字体: {available_fonts[0]}")
-    else:
-        # 回退方案
-        plt.rcParams['font.family'] = 'DejaVu Sans'
-        print("使用默认字体 DejaVu Sans")
-    
-    plt.rcParams['axes.unicode_minus'] = False
+    print("可用的中文字体:", sorted(set(chinese_fonts)))
+    return chinese_fonts
 
-# 在生成图表之前调用
-setup_matplotlib_font()
+# 在应用开头调用
+available_chinese_fonts = check_available_fonts()
+if available_chinese_fonts:
+    # 使用第一个可用的中文字体
+    plt.rcParams['font.family'] = available_chinese_fonts[0]
 
 # 设置页面配置
 st.set_page_config(
