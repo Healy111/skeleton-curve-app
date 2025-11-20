@@ -3,11 +3,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import csv
-import matplotlib.font_manager as fm
-import platform
-import tempfile
-import requests
-import os
 import matplotlib.pyplot as plt
 from io import StringIO, BytesIO
 
@@ -18,57 +13,8 @@ from skeleton_extractor import (
     rbf_smooth
 )
 
-# 字体设置函数
-def setup_chinese_font():
-    """设置中文字体"""
-    system = platform.system()
-    
-    # 不同系统的字体优先级
-    if system == "Windows":
-        font_candidates = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
-    elif system == "Darwin":
-        font_candidates = ['Heiti SC', 'STHeiti', 'AppleGothic']
-    else:
-        font_candidates = ['WenQuanYi Micro Hei', 'Noto Sans CJK SC']
-    
-    # 查找可用字体
-    available_fonts = []
-    for font_name in font_candidates:
-        try:
-            font_path = fm.findfont(fm.FontProperties(family=font_name))
-            if font_path and os.path.exists(font_path):
-                available_fonts.append(font_name)
-        except:
-            continue
-    
-    if available_fonts:
-        plt.rcParams['font.sans-serif'] = available_fonts + ['DejaVu Sans', 'Arial', 'sans-serif']
-        st.success(f"✅ 已设置中文字体: {available_fonts[0]}")
-    else:
-        # 如果系统字体不可用，尝试下载
-        try:
-            font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
-            font_path = os.path.join(tempfile.gettempdir(), "NotoSansCJKsc.otf")
-            
-            if not os.path.exists(font_path):
-                with st.spinner("正在下载中文字体..."):
-                    response = requests.get(font_url)
-                    with open(font_path, 'wb') as f:
-                        f.write(response.content)
-            
-            if os.path.exists(font_path):
-                fe = fm.FontEntry(fname=font_path, name='Noto Sans CJK SC')
-                fm.fontManager.ttflist.insert(0, fe)
-                plt.rcParams['font.family'] = fe.name
-                st.success("✅ 已使用下载的中文字体")
-        except Exception as e:
-            st.warning("⚠️ 无法设置中文字体，图表中的中文可能无法正常显示")
-            plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'sans-serif']
-    
-    plt.rcParams['axes.unicode_minus'] = False
-
-# 在应用开头调用字体设置
-setup_chinese_font()
+plt.rcParams['font.sans-serif'] = ['SimHei', 'FangSong', 'KaiTi']
+plt.rcParams['axes.unicode_minus'] = False
 
 # 设置页面配置
 st.set_page_config(
