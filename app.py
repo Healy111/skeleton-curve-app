@@ -3,6 +3,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import csv
+import tempfile
+import requests
+import os
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 from io import StringIO, BytesIO
 
@@ -13,8 +17,39 @@ from skeleton_extractor import (
     rbf_smooth
 )
 
-plt.rcParams['font.sans-serif'] = ['SimHei', 'FangSong', 'KaiTi']
-plt.rcParams['axes.unicode_minus'] = False
+def setup_chinese_font_for_matplotlib():
+    """专门为matplotlib设置中文字体"""
+    try:
+        # 方案1：下载思源黑体
+        font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
+        font_path = os.path.join(tempfile.gettempdir(), "NotoSansCJKsc.otf")
+
+        if not os.path.exists(font_path):
+            response = requests.get(font_url)
+            with open(font_path, 'wb') as f:
+                f.write(response.content)
+
+        # 注册字体
+        fm.fontManager.addfont(font_path)
+        font_prop = fm.FontProperties(fname=font_path)
+        font_name = font_prop.get_name()
+
+        plt.rcParams['font.family'] = font_name
+        plt.rcParams['axes.unicode_minus'] = False
+        return True
+    except Exception as e:
+        # 方案2：使用系统字体
+        try:
+            system_fonts = ['DejaVu Sans', 'Arial']
+            plt.rcParams['font.family'] = system_fonts
+            plt.rcParams['axes.unicode_minus'] = False
+            return False
+        except:
+            return False
+
+
+# 在应用开头调用字体设置
+setup_chinese_font_for_matplotlib()
 
 # 设置页面配置
 st.set_page_config(
@@ -196,6 +231,9 @@ if st.button("🚀 提取骨架曲线", type="primary", use_container_width=True
     if not (filename.endswith('.txt') or filename.endswith('.csv')):
         st.error("❌ 不支持的文件格式，请上传 .txt 或 .csv 文件")
         st.stop()
+    
+    # 获取不带扩展名的文件名，用于下载文件命名
+    file_base_name = os.path.splitext(filename)[0]
 
     try:
         with st.spinner("正在处理数据，请稍候..."):
@@ -269,7 +307,7 @@ if st.button("🚀 提取骨架曲线", type="primary", use_container_width=True
             else:
                 x_smooth, y_smooth = np.array([]), np.array([])
 
-        # 保存结果到session_state
+        # 保存结果到session_state，同时保存文件名
         st.session_state['processed'] = True
         st.session_state['results'] = {
             'displacement': displacement,
@@ -281,7 +319,8 @@ if st.button("🚀 提取骨架曲线", type="primary", use_container_width=True
             'envelope_displacement': envelope_displacement,
             'envelope_force': envelope_force,
             'x_smooth': x_smooth,
-            'y_smooth': y_smooth
+            'y_smooth': y_smooth,
+            'file_base_name': file_base_name  # 保存文件名前缀
         }
 
         # 显示成功信息
@@ -294,6 +333,8 @@ if st.button("🚀 提取骨架曲线", type="primary", use_container_width=True
 # 在按钮之外显示结果，确保重新运行时也能显示
 if st.session_state.get('processed', False) and 'results' in st.session_state:
     results = st.session_state['results']
+    # 获取文件名前缀
+    file_base_name = results.get('file_base_name', 'data')
 
     # 显示结果图表
     st.header("📊 处理结果")
@@ -362,7 +403,7 @@ if st.session_state.get('processed', False) and 'results' in st.session_state:
             st.download_button(
                 label="下载骨架曲线数据",
                 data=skeleton_csv,
-                file_name="skeleton_curve.csv",
+                file_name=f"{file_base_name}_skeleton_curve.csv",
                 mime="text/csv",
                 use_container_width=True,
                 key="download_skeleton"  # 添加唯一key
@@ -375,11 +416,11 @@ if st.session_state.get('processed', False) and 'results' in st.session_state:
                 '位移': results['x_smooth'],
                 '力': results['y_smooth']
             })
-            envelope_csv = "\ufeff" +  envelope_df.to_csv(index=False)
+            envelope_csv = "\ufeff" + envelope_df.to_csv(index=False)
             st.download_button(
                 label="下载平滑包络线数据",
                 data=envelope_csv,
-                file_name="smoothed_envelope.csv",
+                file_name=f"{file_base_name}_smoothed_envelope.csv",
                 mime="text/csv",
                 use_container_width=True,
                 key="download_envelope"  # 添加唯一key
@@ -447,7 +488,7 @@ if st.session_state.get('processed', False) and 'results' in st.session_state:
     st.download_button(
         label="📥 下载图表PNG",
         data=img_buffer,
-        file_name="skeleton_curve_analysis.png",
+        file_name=f"{file_base_name}_skeleton_curve_analysis.png",
         mime="image/png",
         use_container_width=True,
         key="download_chart"  # 添加唯一key
