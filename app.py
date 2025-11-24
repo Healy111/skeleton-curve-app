@@ -2,6 +2,10 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import tempfile
+import requests
+import os
+import matplotlib.font_manager as fm
 import csv
 import tempfile
 import requests
@@ -23,17 +27,29 @@ def setup_chinese_font_for_matplotlib():
         # 方案1：下载思源黑体
         font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
         font_path = os.path.join(tempfile.gettempdir(), "NotoSansCJKsc.otf")
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> a37a7edaa6d1e87bdbff99422351b3650e1c0bc3
         if not os.path.exists(font_path):
             response = requests.get(font_url)
             with open(font_path, 'wb') as f:
                 f.write(response.content)
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> a37a7edaa6d1e87bdbff99422351b3650e1c0bc3
         # 注册字体
         fm.fontManager.addfont(font_path)
         font_prop = fm.FontProperties(fname=font_path)
         font_name = font_prop.get_name()
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> a37a7edaa6d1e87bdbff99422351b3650e1c0bc3
         plt.rcParams['font.family'] = font_name
         plt.rcParams['axes.unicode_minus'] = False
         return True
@@ -46,11 +62,16 @@ def setup_chinese_font_for_matplotlib():
             return False
         except:
             return False
+<<<<<<< HEAD
 
 
 # 在应用开头调用字体设置
 setup_chinese_font_for_matplotlib()
+=======
+>>>>>>> a37a7edaa6d1e87bdbff99422351b3650e1c0bc3
 
+# 在应用开头调用字体设置
+setup_chinese_font_for_matplotlib()
 # 设置页面配置
 st.set_page_config(
     page_title="骨架曲线提取器",
