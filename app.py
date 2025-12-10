@@ -405,8 +405,8 @@ elif st.session_state.mode == 'batch':
     with st.sidebar:
         st.header("使用说明")
         st.markdown("""
-        1. **选择文件夹**：选择包含待处理文件的文件夹和输出文件夹
-        2. **选择处理选项**：勾选需要执行的处理步骤
+        1. **选择文件夹**：输入待处理文件夹路径和输出文件夹路径
+        2. **选择保存数据**：勾选需要保存的数据
         3. **开始批量处理**：点击按钮开始处理所有文件
         4. **等待完成**：处理完成后会有提示
         
@@ -414,14 +414,13 @@ elif st.session_state.mode == 'batch':
         - 批量处理不会显示可视化结果
         - 支持.txt和.csv格式的文件
         - 输出文件会保存在指定的输出文件夹中
-        - 只有当所有勾选的操作都完成后才会保存最终数据
         """)
     
     st.header("📁 文件夹选择")
     
     # 选择输入和输出文件夹
-    input_folder = st.text_input("选择输入文件夹路径（包含待处理的文件）:", "")
-    output_folder = st.text_input("选择输出文件夹路径（处理结果保存位置）:", "")
+    input_folder = st.text_input("输入文件夹路径（包含待处理的文件）:", "")
+    output_folder = st.text_input("输出文件夹路径（处理结果保存位置）:", "")
     
     st.header("⚙️ 数据保存选项")
     
