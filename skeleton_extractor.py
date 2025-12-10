@@ -1,7 +1,9 @@
-# skeleton_extractor.py
 import numpy as np
 from scipy.interpolate import Rbf
 from scipy.spatial import ConvexHull
+import csv
+from io import StringIO
+import os
 
 class SkeletonCurveExtractor:
     """
@@ -161,6 +163,44 @@ class SkeletonCurveExtractor:
 
         return processed_points
 
+    def calculate_envelope(self, skeleton_displacement, skeleton_force):
+        """
+        计算骨架曲线的外包络线
+
+        Args:
+            skeleton_displacement: 骨架曲线位移数据
+            skeleton_force: 骨架曲线力数据
+
+        Returns:
+            正向外包络线和负向外包络线
+        """
+        skeleton_disp_array = np.array(skeleton_displacement)
+        skeleton_force_array = np.array(skeleton_force)
+
+        positive_indices = skeleton_disp_array >= 0
+        negative_indices = skeleton_disp_array <= 0
+
+        positive_points = np.column_stack((
+            skeleton_disp_array[positive_indices],
+            skeleton_force_array[positive_indices]
+        ))
+        negative_points = np.column_stack((
+            skeleton_disp_array[negative_indices],
+            skeleton_force_array[negative_indices]
+        ))
+
+        # 计算包络线
+        positive_envelope = np.array([])
+        negative_envelope = np.array([])
+
+        if len(positive_points) > 2:
+            positive_envelope = improved_geometric_filter(positive_points, 'positive')
+
+        if len(negative_points) > 2:
+            negative_envelope = improved_geometric_filter(negative_points, 'negative')
+            
+        return positive_envelope, negative_envelope
+
 
 def improved_geometric_filter(points, side='positive'):
     """改进的几何特性包络点筛选，考虑骨架曲线力绝对值先增后减的特点"""
@@ -287,3 +327,300 @@ def rbf_smooth(x, y, function='multiquadric', smooth_factor=0.1, num_points=300)
     rbf = Rbf(x, y, function=function, smooth=smooth_factor)
     y_smooth = rbf(x_new)
     return x_new, y_smooth
+
+
+def read_txt_data(file_content, filename=''):
+    """
+    读取txt文件或csv文件中的数据
+    
+    Args:
+        file_content: 文件内容（字符串或文件对象）
+        filename: 文件名（用于判断是否为CSV文件）
+
+    Returns:
+        位移和力数据的numpy数组
+    """
+    try:
+        # 根据文件名确定文件类型
+        is_csv = filename.lower().endswith('.csv') if filename else False
+        
+        # 如果是上传的文件对象
+        if hasattr(file_content, 'read'):
+            content = file_content.read().decode('utf-8')
+        else:
+            content = file_content
+            
+        # 解析数据
+        displacements = []
+        forces = []
+        if is_csv:
+            # 处理CSV文件（跳过标题行）
+            reader = csv.reader(StringIO(content))
+            # 跳过标题行
+            next(reader, None)
+
+            for row in reader:
+                if len(row) >= 2:
+                    try:
+                        displacement = float(row[0])
+                        force = float(row[1])
+                        displacements.append(displacement)
+                        forces.append(force)
+                    except ValueError:
+                        # Skip rows that can't be parsed
+                        continue
+        else:
+            lines = content.split('\n')
+
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('"'):  # 跳过空行和标题行
+                    try:
+                        values = line.split()
+                        if len(values) >= 2:
+                            displacement = float(values[0])
+                            force = float(values[1])
+                            displacements.append(displacement)
+                            forces.append(force)
+                    except ValueError:
+                        # 跳过无法解析的行
+                        continue
+
+        return np.array(displacements), np.array(forces)
+    except Exception as e:
+        raise Exception(f"数据读取失败: {str(e)}")
+
+
+def process_single_file(displacement, force, smooth_factor=0.05, num_points=300):
+    """
+    处理单个文件的所有步骤
+    
+    Args:
+        displacement: 位移数据
+        force: 力数据
+        smooth_factor: RBF平滑因子
+        num_points: 插值点数
+
+    Returns:
+        包含所有处理结果的字典
+    """
+    # 1. 提取骨架曲线
+    extractor = SkeletonCurveExtractor()
+    skeleton_displacement, skeleton_force = extractor.extract_skeleton_curve(
+        displacement.tolist(), force.tolist()
+    )
+
+    # 2. 计算外包络线
+    positive_envelope, negative_envelope = extractor.calculate_envelope(skeleton_displacement, skeleton_force)
+
+    # 3. 合并外包络线数据
+    all_envelope_points = []
+    if len(positive_envelope) > 0:
+        for point in positive_envelope:
+            all_envelope_points.append([point[0], point[1]])
+
+    if len(negative_envelope) > 0:
+        for point in negative_envelope:
+            all_envelope_points.append([point[0], point[1]])
+
+    # 转换为numpy数组并排序
+    if len(all_envelope_points) > 0:
+        all_envelope_points = np.array(all_envelope_points)
+        sorted_indices = np.argsort(all_envelope_points[:, 0])
+        envelope_displacement = all_envelope_points[sorted_indices][:, 0]
+        envelope_force = all_envelope_points[sorted_indices][:, 1]
+    else:
+        envelope_displacement = np.array([])
+        envelope_force = np.array([])
+
+    # 4. RBF插值平滑
+    if len(envelope_displacement) > 0:
+        x_smooth, y_smooth = rbf_smooth(
+            envelope_displacement, envelope_force,
+            function='multiquadric',
+            smooth_factor=smooth_factor,
+            num_points=num_points
+        )
+    else:
+        x_smooth, y_smooth = np.array([]), np.array([])
+
+    return {
+        'skeleton_displacement': skeleton_displacement,
+        'skeleton_force': skeleton_force,
+        'positive_envelope': positive_envelope,
+        'negative_envelope': negative_envelope,
+        'envelope_displacement': envelope_displacement,
+        'envelope_force': envelope_force,
+        'x_smooth': x_smooth,
+        'y_smooth': y_smooth
+    }
+
+
+def batch_process_files(file_paths, output_folder, extract_peak_points=True, 
+                       extract_envelope=True, smooth_processing=True, 
+                       smooth_factor=0.05, num_points=300):
+    """
+    批量处理文件
+    
+    Args:
+        file_paths: 文件路径列表
+        output_folder: 输出文件夹路径
+        extract_peak_points: 是否提取骨架曲线峰值点
+        extract_envelope: 是否提取外包络线
+        smooth_processing: 是否进行平滑处理
+        smooth_factor: RBF平滑因子
+        num_points: 插值点数
+
+    Returns:
+        成功处理的文件数和失败文件列表
+    """
+    success_count = 0
+    failed_files = []
+    
+    extractor = SkeletonCurveExtractor()
+    
+    for file_path in file_paths:
+        try:
+            # 获取不带扩展名的文件名
+            file_base_name = os.path.splitext(os.path.basename(file_path))[0]
+            
+            # 读取数据
+            with open(file_path, 'r', encoding='utf-8') as f:
+                file_content = f.read()
+                
+            # 判断文件类型
+            is_csv = file_path.lower().endswith('.csv')
+            
+            # 解析数据
+            displacements = []
+            forces = []
+            
+            if is_csv:
+                reader = csv.reader(StringIO(file_content))
+                next(reader, None)  # 跳过标题行
+                
+                for row in reader:
+                    if len(row) >= 2:
+                        try:
+                            displacement = float(row[0])
+                            force = float(row[1])
+                            displacements.append(displacement)
+                            forces.append(force)
+                        except ValueError:
+                            continue
+            else:
+                lines = file_content.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('"'):
+                        try:
+                            values = line.split()
+                            if len(values) >= 2:
+                                displacement = float(values[0])
+                                force = float(values[1])
+                                displacements.append(displacement)
+                                forces.append(force)
+                        except ValueError:
+                            continue
+                            
+            displacement = np.array(displacements)
+            force = np.array(forces)
+            
+            if len(displacement) == 0 or len(force) == 0:
+                failed_files.append((file_base_name, "数据为空"))
+                continue
+                
+            # 提取骨架曲线
+            skeleton_displacement, skeleton_force = extractor.extract_skeleton_curve(
+                displacement.tolist(), force.tolist()
+            )
+            
+            if len(skeleton_displacement) == 0 or len(skeleton_force) == 0:
+                failed_files.append((file_base_name, "骨架曲线提取失败"))
+                continue
+            
+            # 只有当所有勾选的操作都完成后才保存最终数据
+            if extract_peak_points or extract_envelope or smooth_processing:
+                # 准备最终数据
+                final_data_columns = []
+                final_data_values = []
+                
+                # 添加骨架曲线数据
+                if extract_peak_points:
+                    final_data_columns.extend(['骨架曲线_位移', '骨架曲线_力'])
+                    final_data_values.extend([skeleton_displacement, skeleton_force])
+                
+                # 处理外包络线和平滑处理选项
+                if extract_envelope or smooth_processing:
+                    # 计算外包络线
+                    positive_envelope, negative_envelope = extractor.calculate_envelope(skeleton_displacement, skeleton_force)
+                    
+                    # 合并外包络线数据
+                    all_envelope_points = []
+                    if len(positive_envelope) > 0:
+                        for point in positive_envelope:
+                            all_envelope_points.append([point[0], point[1]])
+
+                    if len(negative_envelope) > 0:
+                        for point in negative_envelope:
+                            all_envelope_points.append([point[0], point[1]])
+
+                    # 转换为numpy数组并排序
+                    if len(all_envelope_points) > 0:
+                        all_envelope_points = np.array(all_envelope_points)
+                        sorted_indices = np.argsort(all_envelope_points[:, 0])
+                        envelope_displacement = all_envelope_points[sorted_indices][:, 0]
+                        envelope_force = all_envelope_points[sorted_indices][:, 1]
+                    else:
+                        envelope_displacement = np.array([])
+                        envelope_force = np.array([])
+                        
+                    # 添加外包络线数据
+                    if extract_envelope and len(envelope_displacement) > 0:
+                        final_data_columns.extend(['外包络线_位移', '外包络线_力'])
+                        final_data_values.extend([envelope_displacement.tolist(), envelope_force.tolist()])
+                        
+                    # 处理平滑数据
+                    if smooth_processing and len(envelope_displacement) > 0:
+                        # RBF插值平滑（使用用户设置的参数）
+                        x_smooth, y_smooth = rbf_smooth(
+                            envelope_displacement, envelope_force,
+                            function='multiquadric',
+                            smooth_factor=smooth_factor,  # 使用用户设置的参数
+                            num_points=num_points         # 使用用户设置的参数
+                        )
+                        
+                        final_data_columns.extend(['平滑包络线_位移', '平滑包络线_力'])
+                        final_data_values.extend([x_smooth.tolist(), y_smooth.tolist()])
+                
+                # 保存最终数据（只保存一次）
+                if final_data_columns:
+                    # 确定最大长度以便对齐数据
+                    max_length = max(len(arr) for arr in final_data_values)
+                    
+                    # 创建对齐的数据
+                    aligned_data = []
+                    for arr in final_data_values:
+                        if len(arr) < max_length:
+                            # 用NaN填充较短的数组
+                            padded_arr = arr + [np.nan] * (max_length - len(arr))
+                            aligned_data.append(padded_arr)
+                        else:
+                            aligned_data.append(arr)
+                    
+                    # 构建DataFrame
+                    final_df_dict = {}
+                    for i, column_name in enumerate(final_data_columns):
+                        final_df_dict[column_name] = aligned_data[i]
+                    
+                    import pandas as pd
+                    final_df = pd.DataFrame(final_df_dict)
+                    final_output_path = os.path.join(output_folder, f"{file_base_name}_骨架曲线数据.csv")
+                    final_df.to_csv(final_output_path, index=False, encoding='utf-8-sig')
+                    
+            success_count += 1
+            
+        except Exception as e:
+            failed_files.append((file_base_name, str(e)))
+            
+    return success_count, failed_files
