@@ -25,10 +25,15 @@ st.set_page_config(
 # 初始化 session state
 if 'mode' not in st.session_state:
     st.session_state.mode = 'home'
+if 'batch_results' not in st.session_state:
+    st.session_state.batch_results = {}
 
 # 页面导航函数
 def navigate_to(mode):
     st.session_state.mode = mode
+    # 当切换到批量处理模式时重置结果
+    if mode == 'batch':
+        st.session_state.batch_results = {}
     st.rerun()
 
 # 主页 - 选择处理模式
@@ -541,6 +546,9 @@ elif st.session_state.mode == 'batch':
                             # 添加到ZIP文件
                             zip_file.writestr(f"{file_base_name}_骨架曲线数据.csv", csv_data)
                     
+                    # 重置缓冲区指针
+                    zip_buffer.seek(0)
+                    
                     # 提供ZIP文件下载
                     st.download_button(
                         label="📥 下载所有结果文件 (ZIP)",
@@ -565,6 +573,9 @@ elif st.session_state.mode == 'batch':
                 csv_data = "\ufeff" + df.to_csv(index=False)
                 # 添加到ZIP文件
                 zip_file.writestr(f"{file_base_name}_骨架曲线数据.csv", csv_data)
+        
+        # 重置缓冲区指针
+        zip_buffer.seek(0)
         
         # 提供ZIP文件下载
         st.download_button(

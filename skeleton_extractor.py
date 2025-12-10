@@ -1,9 +1,14 @@
 import numpy as np
-from scipy.interpolate import Rbf
+
+import pandas as pd
+import matplotlib.pyplot as plt
 from scipy.spatial import ConvexHull
+from scipy.interpolate import Rbf
+from scipy.signal import argrelextrema
+import os
 import csv
 from io import StringIO
-import os
+import streamlit as st
 
 class SkeletonCurveExtractor:
     """
@@ -646,3 +651,9 @@ def batch_process_files(file_paths, output_folder, extract_peak_points=True,
             failed_files.append((file_base_name if 'file_base_name' in locals() else "未知文件", str(e)))
             
     return success_count, failed_files
+
+
+def reset_batch_results():
+    """重置批处理结果"""
+    if 'batch_results' in st.session_state:
+        st.session_state.batch_results = {}
