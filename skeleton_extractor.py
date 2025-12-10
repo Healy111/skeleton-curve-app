@@ -463,8 +463,8 @@ def batch_process_files(file_paths, output_folder, extract_peak_points=True,
     批量处理文件
     
     Args:
-        file_paths: 文件路径列表
-        output_folder: 输出文件夹路径
+        file_paths: 文件路径列表或上传的文件对象列表
+        output_folder: 输出文件夹路径 (在Web应用中未使用)
         extract_peak_points: 是否提取骨架曲线峰值点
         extract_envelope: 是否提取外包络线
         smooth_processing: 是否进行平滑处理
@@ -479,17 +479,30 @@ def batch_process_files(file_paths, output_folder, extract_peak_points=True,
     
     extractor = SkeletonCurveExtractor()
     
-    for file_path in file_paths:
+    for file_item in file_paths:
         try:
-            # 获取不带扩展名的文件名
-            file_base_name = os.path.splitext(os.path.basename(file_path))[0]
-            
-            # 读取数据
-            with open(file_path, 'r', encoding='utf-8') as f:
-                file_content = f.read()
+            # 获取文件名（根据不同类型的文件对象处理）
+            if hasattr(file_item, 'name'):
+                # Streamlit UploadedFile 对象
+                file_name = file_item.name
+                file_item.seek(0)
+                file_content = file_item.read().decode('utf-8')
+                file_item.seek(0)
+            elif isinstance(file_item, str) and os.path.exists(file_item):
+                # 本地文件路径
+                file_name = os.path.basename(file_item)
+                with open(file_item, 'r', encoding='utf-8') as f:
+                    file_content = f.read()
+            else:
+                # 其他情况
+                failed_files.append(("未知文件", "无效的文件对象"))
+                continue
                 
+            # 获取不带扩展名的文件名
+            file_base_name = os.path.splitext(file_name)[0]
+            
             # 判断文件类型
-            is_csv = file_path.lower().endswith('.csv')
+            is_csv = file_name.lower().endswith('.csv')
             
             # 解析数据
             displacements = []
@@ -615,12 +628,21 @@ def batch_process_files(file_paths, output_folder, extract_peak_points=True,
                     
                     import pandas as pd
                     final_df = pd.DataFrame(final_df_dict)
-                    final_output_path = os.path.join(output_folder, f"{file_base_name}_骨架曲线数据.csv")
-                    final_df.to_csv(final_output_path, index=False, encoding='utf-8-sig')
+                    
+                    # 在Web应用中，我们将结果保存到session_state而不是文件
+                    if output_folder is None:
+                        # Web应用模式 - 结果保存在内存中供后续下载
+                        if 'batch_results' not in st.session_state:
+                            st.session_state.batch_results = {}
+                        st.session_state.batch_results[file_base_name] = final_df
+                    else:
+                        # 本地模式 - 保存到文件
+                        final_output_path = os.path.join(output_folder, f"{file_base_name}_骨架曲线数据.csv")
+                        final_df.to_csv(final_output_path, index=False, encoding='utf-8-sig')
                     
             success_count += 1
             
         except Exception as e:
-            failed_files.append((file_base_name, str(e)))
+            failed_files.append((file_base_name if 'file_base_name' in locals() else "未知文件", str(e)))
             
     return success_count, failed_files

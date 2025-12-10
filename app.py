@@ -4,6 +4,8 @@ import os
 import matplotlib.pyplot as plt
 from io import BytesIO
 import glob
+import zipfile
+import tempfile
 
 # 从后端模块导入核心功能
 from skeleton_extractor import (
@@ -405,22 +407,58 @@ elif st.session_state.mode == 'batch':
     with st.sidebar:
         st.header("使用说明")
         st.markdown("""
-        1. **选择文件夹**：输入待处理文件夹路径和输出文件夹路径
+        1. **上传文件**：上传包含待处理文件的ZIP压缩包，或逐个上传TXT/CSV文件
         2. **选择保存数据**：勾选需要保存的数据
         3. **开始批量处理**：点击按钮开始处理所有文件
-        4. **等待完成**：处理完成后会有提示
+        4. **下载结果**：处理完成后会提供ZIP文件下载
         
         **注意事项：** 
         - 批量处理不会显示可视化结果
         - 支持.txt和.csv格式的文件
-        - 输出文件会保存在指定的输出文件夹中
+        - 输出文件会被打包成ZIP格式供下载
         """)
     
-    st.header("📁 文件夹选择")
+    st.header("📁 文件上传")
     
-    # 选择输入和输出文件夹
-    input_folder = st.text_input("输入文件夹路径（包含待处理的文件）:", "")
-    output_folder = st.text_input("输出文件夹路径（处理结果保存位置）:", "")
+    # 选择上传方式
+    upload_option = st.radio("选择上传方式", ["上传ZIP文件", "逐个上传文件"])
+    
+    uploaded_files = []
+    if upload_option == "上传ZIP文件":
+        uploaded_zip = st.file_uploader("上传包含数据文件的ZIP包", type=['zip'])
+        if uploaded_zip:
+            import zipfile
+            import tempfile
+            
+            try:
+                # 创建临时目录来解压文件
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    with zipfile.ZipFile(uploaded_zip, 'r') as zip_ref:
+                        zip_ref.extractall(temp_dir)
+                    
+                    # 获取所有txt和csv文件
+                    txt_files = glob.glob(os.path.join(temp_dir, "*.txt"))
+                    csv_files = glob.glob(os.path.join(temp_dir, "*.csv"))
+                    all_files = txt_files + csv_files
+                    
+                    if not all_files:
+                        st.warning("⚠️ ZIP文件中没有找到.txt或.csv文件")
+                    else:
+                        st.success(f"✅ 从ZIP文件中找到 {len(all_files)} 个数据文件")
+                        uploaded_files = all_files
+                        
+            except Exception as e:
+                st.error(f"❌ 解压ZIP文件时出错: {str(e)}")
+    else:
+        uploaded_file_list = st.file_uploader(
+            "选择多个数据文件", 
+            type=['txt', 'csv'], 
+            accept_multiple_files=True
+        )
+        uploaded_files = uploaded_file_list if uploaded_file_list else []
+        
+        if uploaded_files:
+            st.success(f"✅ 已上传 {len(uploaded_files)} 个文件")
     
     st.header("⚙️ 数据保存选项")
     
@@ -462,36 +500,22 @@ elif st.session_state.mode == 'batch':
     
     # 开始批量处理按钮
     if st.button("🚀 开始批量处理", type="primary", width='stretch'):
-        if not input_folder or not output_folder:
-            st.warning("⚠️ 请输入完整的输入和输出文件夹路径")
-            st.stop()
-            
-        if not os.path.exists(input_folder):
-            st.error("❌ 输入文件夹不存在，请检查路径")
-            st.stop()
-            
-        if not os.path.exists(output_folder):
-            st.error("❌ 输出文件夹不存在，请检查路径")
+        if not uploaded_files:
+            st.warning("⚠️ 请上传至少一个文件")
             st.stop()
             
         if not (extract_peak_points or extract_envelope or smooth_processing):
             st.warning("⚠️ 请至少选择一种保存数据")
             st.stop()
             
-        # 获取所有txt和csv文件
-        txt_files = glob.glob(os.path.join(input_folder, "*.txt"))
-        csv_files = glob.glob(os.path.join(input_folder, "*.csv"))
-        all_files = txt_files + csv_files
-        
-        if not all_files:
-            st.warning("⚠️ 输入文件夹中没有找到.txt或.csv文件")
-            st.stop()
-            
         try:
-            with st.spinner(f"正在处理 {len(all_files)} 个文件，请稍候..."):
+            with st.spinner(f"正在处理 {len(uploaded_files)} 个文件，请稍候..."):
+                # 初始化批处理结果存储
+                st.session_state.batch_results = {}
+                
                 # 使用封装好的批量处理函数
                 success_count, failed_files = batch_process_files(
-                    all_files, output_folder, 
+                    uploaded_files, None,  # output_folder 参数未使用
                     extract_peak_points, extract_envelope, smooth_processing,
                     smooth_factor, num_points
                 )
@@ -504,8 +528,52 @@ elif st.session_state.mode == 'batch':
                     for file_name, error in failed_files:
                         st.write(f"- {file_name}: {error}")
                         
+                # 如果有成功的处理结果，提供下载选项
+                if success_count > 0 and 'batch_results' in st.session_state and st.session_state.batch_results:
+                    st.header("💾 下载结果")
+                    
+                    # 创建下载ZIP文件
+                    zip_buffer = BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                        for file_base_name, df in st.session_state.batch_results.items():
+                            # 将DataFrame转换为CSV字符串
+                            csv_data = "\ufeff" + df.to_csv(index=False)
+                            # 添加到ZIP文件
+                            zip_file.writestr(f"{file_base_name}_骨架曲线数据.csv", csv_data)
+                    
+                    # 提供ZIP文件下载
+                    st.download_button(
+                        label="📥 下载所有结果文件 (ZIP)",
+                        data=zip_buffer.getvalue(),
+                        file_name="骨架曲线处理结果.zip",
+                        mime="application/zip",
+                        key="download_batch_results"
+                    )
+                        
         except Exception as e:
             st.error(f"❌ 批量处理过程中发生错误: {str(e)}")
+            
+    # 如果已经有处理结果，继续显示下载按钮
+    elif 'batch_results' in st.session_state and st.session_state.batch_results:
+        st.header("💾 下载结果")
+        
+        # 创建下载ZIP文件
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+            for file_base_name, df in st.session_state.batch_results.items():
+                # 将DataFrame转换为CSV字符串
+                csv_data = "\ufeff" + df.to_csv(index=False)
+                # 添加到ZIP文件
+                zip_file.writestr(f"{file_base_name}_骨架曲线数据.csv", csv_data)
+        
+        # 提供ZIP文件下载
+        st.download_button(
+            label="📥 下载所有结果文件 (ZIP)",
+            data=zip_buffer.getvalue(),
+            file_name="骨架曲线处理结果.zip",
+            mime="application/zip",
+            key="download_batch_results_repeat"
+        )
             
     st.markdown("---")
     st.markdown(
